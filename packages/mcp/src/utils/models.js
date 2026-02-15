@@ -1,37 +1,87 @@
 import { getAuthHeaders } from "./authUtils.js";
 
 const API_BASE_URL = "https://gen.pollinations.ai";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
-export async function getImageModels() {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+// Cache storage
+const cache = {
+    imageModels: { data: null, timestamp: 0 },
+    textModels: { data: null, timestamp: 0 },
+};
 
-    const response = await fetch(`${API_BASE_URL}/image/models`, {
-        headers: getAuthHeaders(),
-        signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId));
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch image models: ${response.status}`);
-    }
-
-    return response.json();
+function isCacheValid(cacheEntry) {
+    return (
+        cacheEntry.data !== null &&
+        Date.now() - cacheEntry.timestamp < CACHE_TTL
+    );
 }
 
-export async function getTextModels() {
+/**
+ * Clears the model cache.
+ * Should be called when API key changes to ensure models list reflects the new tier.
+ */
+export function clearModelCache() {
+    cache.imageModels = { data: null, timestamp: 0 };
+    cache.textModels = { data: null, timestamp: 0 };
+}
+
+export async function getImageModels(forceRefresh = false) {
+    if (!forceRefresh && isCacheValid(cache.imageModels)) {
+        return cache.imageModels.data;
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-    const response = await fetch(`${API_BASE_URL}/text/models`, {
-        headers: getAuthHeaders(),
-        signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId));
+    try {
+        const response = await fetch(`${API_BASE_URL}/image/models`, {
+            headers: getAuthHeaders(),
+            signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
 
-    if (!response.ok) {
-        throw new Error(`Failed to fetch text models: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch image models: ${response.status}`);
+        }
+
+        const models = await response.json();
+        cache.imageModels = { data: models, timestamp: Date.now() };
+        return models;
+    } catch (error) {
+        // If fetch fails but we have cached data, return it as fallback
+        if (cache.imageModels.data) {
+            return cache.imageModels.data;
+        }
+        throw error;
+    }
+}
+
+export async function getTextModels(forceRefresh = false) {
+    if (!forceRefresh && isCacheValid(cache.textModels)) {
+        return cache.textModels.data;
     }
 
-    return response.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/text/models`, {
+            headers: getAuthHeaders(),
+            signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch text models: ${response.status}`);
+        }
+
+        const models = await response.json();
+        cache.textModels = { data: models, timestamp: Date.now() };
+        return models;
+    } catch (error) {
+        if (cache.textModels.data) {
+            return cache.textModels.data;
+        }
+        throw error;
+    }
 }
 
 export async function getImageModelNames() {

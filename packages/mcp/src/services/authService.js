@@ -7,6 +7,7 @@ import {
     getKeyType,
     getMaskedKey,
 } from "../utils/authUtils.js";
+import { clearModelCache } from "../utils/models.js";
 import { z } from "zod";
 
 async function setApiKey(params) {
@@ -23,6 +24,10 @@ async function setApiKey(params) {
     }
 
     storeApiKey(key);
+    
+    // Invalidate model cache when API key changes
+    // This allows listTextModels to show Seed/Flower models immediately
+    clearModelCache();
 
     const keyType = getKeyType();
     const maskedKey = getMaskedKey();
@@ -33,7 +38,7 @@ async function setApiKey(params) {
                 success: true,
                 keyType,
                 maskedKey,
-                message: `API key set successfully. Type: ${keyType}`,
+                message: `API key set successfully. Type: ${keyType}. Model cache cleared.`,
                 info:
                     keyType === "publishable"
                         ? "Publishable keys are rate-limited (1 pollen per IP per hour)"
@@ -80,13 +85,14 @@ async function getKeyInfo(params) {
 async function clearApiKey(params) {
     const wasSet = hasApiKey();
     clearStoredKey();
+    clearModelCache();
 
     return createMCPResponse([
         createTextContent(
             {
                 success: true,
                 message: wasSet
-                    ? "API key cleared successfully"
+                    ? "API key cleared successfully. Model cache cleared."
                     : "No API key was set",
             },
             true,
